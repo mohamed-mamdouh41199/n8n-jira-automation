@@ -1,0 +1,43 @@
+# Environment files
+.env
+.env.local
+.env.production
+
+# n8n data
+.n8n/
+n8n-data/
+
+# Database
+postgres-data/
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+backups/*.json
+!backups/.gitkeep
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Credentials (extra safety)
+*credentials*.json
+*secrets*.json

@@ -1,0 +1,537 @@
+{
+  "name": "Jira Task Automation with Rovo AI",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "getAll",
+        "jql": "assignee = currentUser() AND parent is EMPTY AND resolution = Unresolved",
+        "returnAll": true
+      },
+      "id": "jira-get-tasks",
+      "name": "Get My Assigned Tasks",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "1",
+          "name": "Jira Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.fields.subtasks.length }}",
+              "operation": "equal",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "filter-parent-tasks",
+      "name": "Filter Parent Tasks Only",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-each-task",
+      "name": "Loop Each Task",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_URL }}/rest/api/3/llm/analyze",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "=Break down this Jira task into 3-7 actionable subtasks suitable for development. Task: {{ $json.key }} - {{ $json.fields.summary }}. Description: {{ $json.fields.description }}. Return ONLY valid JSON array: [{\"title\": \"subtask name\", \"description\": \"details\", \"complexity\": \"low|medium|high\"}]"
+            },
+            {
+              "name": "issueKey",
+              "value": "={{ $json.key }}"
+            },
+            {
+              "name": "context",
+              "value": "task_breakdown"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "rovo-ai-breakdown",
+      "name": "Rovo AI: Break Down Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1050, 100],
+      "continueOnFail": true,
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "1",
+          "name": "Jira Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-ai-success",
+      "name": "AI Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Rovo AI response\nconst parentTask = $('Loop Each Task').item.json;\nlet subtasks = [];\n\ntry {\n  const aiResponse = $input.first().json;\n  const responseText = aiResponse.response || aiResponse.data || aiResponse.result;\n  \n  // Parse JSON from AI response\n  const jsonMatch = responseText.match(/\\[.*\\]/s);\n  if (jsonMatch) {\n    subtasks = JSON.parse(jsonMatch[0]);\n  }\n} catch (error) {\n  console.log('AI parsing failed:', error);\n  subtasks = [];\n}\n\n// Validate subtasks\nif (!Array.isArray(subtasks) || subtasks.length === 0) {\n  subtasks = [];\n}\n\nreturn subtasks.map(st => ({\n  json: {\n    parentKey: parentTask.key,\n    parentId: parentTask.id,\n    title: st.title,\n    description: st.description || '',\n    complexity: st.complexity || 'medium',\n    source: 'ai'\n  }\n}));",
+        "options": {}
+      },
+      "id": "parse-ai-subtasks",
+      "name": "Parse AI Subtasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fallback: Rule-based task breakdown\nconst parentTask = $('Loop Each Task').item.json;\nconst summary = parentTask.fields.summary.toLowerCase();\nconst description = (parentTask.fields.description || '').toLowerCase();\n\nlet subtasks = [];\n\n// Default breakdown based on keywords\nif (summary.includes('api') || summary.includes('backend')) {\n  subtasks = [\n    { title: 'Setup API endpoint structure', complexity: 'medium' },\n    { title: 'Implement business logic', complexity: 'high' },\n    { title: 'Add input validation', complexity: 'low' },\n    { title: 'Write unit tests', complexity: 'medium' },\n    { title: 'Update API documentation', complexity: 'low' }\n  ];\n} else if (summary.includes('ui') || summary.includes('frontend') || summary.includes('page')) {\n  subtasks = [\n    { title: 'Create component structure', complexity: 'medium' },\n    { title: 'Implement UI layout', complexity: 'medium' },\n    { title: 'Add user interactions', complexity: 'medium' },\n    { title: 'Style and responsive design', complexity: 'low' },\n    { title: 'Write component tests', complexity: 'low' }\n  ];\n} else if (summary.includes('bug') || summary.includes('fix')) {\n  subtasks = [\n    { title: 'Reproduce and investigate issue', complexity: 'medium' },\n    { title: 'Implement fix', complexity: 'medium' },\n    { title: 'Add regression test', complexity: 'low' },\n    { title: 'Verify fix in different scenarios', complexity: 'low' }\n  ];\n} else {\n  // Generic breakdown\n  subtasks = [\n    { title: 'Analysis and design', complexity: 'medium' },\n    { title: 'Implementation', complexity: 'high' },\n    { title: 'Testing', complexity: 'medium' },\n    { title: 'Documentation', complexity: 'low' }\n  ];\n}\n\nreturn subtasks.map(st => ({\n  json: {\n    parentKey: parentTask.key,\n    parentId: parentTask.id,\n    title: st.title,\n    description: st.description || '',\n    complexity: st.complexity,\n    source: 'fallback'\n  }\n}));"
+        },
+        "options": {}
+      },
+      "id": "fallback-breakdown",
+      "name": "Fallback: Rule-Based Breakdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_URL }}/rest/api/3/llm/analyze",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "=Estimate time in hours (0.5 to 16h) for this subtask: {{ $json.title }}. Complexity: {{ $json.complexity }}. Return ONLY valid JSON: {\"hours\": number, \"reasoning\": \"brief explanation\"}"
+            },
+            {
+              "name": "context",
+              "value": "estimation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "rovo-ai-estimate",
+      "name": "Rovo AI: Estimate Subtask",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1650, 140],
+      "continueOnFail": true,
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "1",
+          "name": "Jira Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI estimation or use fallback\nconst subtask = $input.first().json;\nlet estimationHours = 2; // default\n\ntry {\n  const aiResponse = $input.first().json;\n  \n  if (!aiResponse.error && aiResponse.response) {\n    const responseText = aiResponse.response || aiResponse.data;\n    const jsonMatch = responseText.match(/\\{.*\\}/s);\n    \n    if (jsonMatch) {\n      const estimate = JSON.parse(jsonMatch[0]);\n      estimationHours = estimate.hours || 2;\n    }\n  } else {\n    // Fallback based on complexity\n    const complexityMap = {\n      'low': 2,\n      'medium': 4,\n      'high': 8\n    };\n    estimationHours = complexityMap[subtask.complexity] || 4;\n  }\n} catch (error) {\n  // Fallback based on complexity\n  const complexityMap = {\n    'low': 2,\n    'medium': 4,\n    'high': 8\n  };\n  estimationHours = complexityMap[subtask.complexity] || 4;\n}\n\n// Jira time format (seconds)\nconst estimationSeconds = estimationHours * 3600;\n\nreturn [{\n  json: {\n    ...subtask,\n    estimationHours,\n    estimationSeconds\n  }\n}];"
+        },
+        "options": {}
+      },
+      "id": "calculate-estimation",
+      "name": "Calculate Estimation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 140]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "create",
+        "project": {
+          "__rl": true,
+          "value": "={{ $('Loop Each Task').item.json.fields.project.key }}",
+          "mode": "id"
+        },
+        "issueType": {
+          "__rl": true,
+          "value": "Sub-task",
+          "mode": "name"
+        },
+        "summary": "={{ $json.title }}",
+        "additionalFields": {
+          "description": "={{ $json.description }}",
+          "parent": "={{ $json.parentKey }}",
+          "timetracking": {
+            "originalEstimate": "={{ $json.estimationHours }}h"
+          }
+        }
+      },
+      "id": "create-subtask",
+      "name": "Create Subtask in Jira",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [2050, 140],
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "1",
+          "name": "Jira Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "update",
+        "issueKey": "={{ $json.key }}",
+        "updateFields": {
+          "assignee": {
+            "__rl": true,
+            "value": "={{ $('Get My Assigned Tasks').first().json.fields.assignee.accountId }}",
+            "mode": "id"
+          }
+        }
+      },
+      "id": "assign-subtask",
+      "name": "Assign Subtask to Me",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [2250, 140],
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "1",
+          "name": "Jira Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract feature name from task for branch naming\nconst parentTask = $('Loop Each Task').item.json;\nconst taskKey = parentTask.key; // e.g., PROJ-123\nconst summary = parentTask.fields.summary;\n\n// Create feature name from summary\n// Remove special chars, convert to lowercase, replace spaces with hyphens\nlet featureName = summary\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s-]/g, '')\n  .replace(/\\s+/g, '-')\n  .substring(0, 50); // limit length\n\n// Remove trailing hyphens\nfeatureName = featureName.replace(/-+$/g, '');\n\n// Branch name format: feature/[featurename]-storyticket\nconst branchName = `feature/${featureName}-${taskKey}`;\n\nreturn [{\n  json: {\n    ...parentTask,\n    branchName,\n    featureName,\n    taskKey\n  }\n}];"
+        },
+        "options": {}
+      },
+      "id": "extract-feature-name",
+      "name": "Extract Feature Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.bitbucket.org/2.0/repositories/{{ $env.BITBUCKET_WORKSPACE }}/{{ $env.BITBUCKET_REPO }}/refs/branches",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $json.branchName }}"
+            },
+            {
+              "name": "target",
+              "value": "={{ { hash: $env.BITBUCKET_DEFAULT_BRANCH || 'main' } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-branch",
+      "name": "Create Bitbucket Branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2650, 140],
+      "continueOnFail": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "2",
+          "name": "Bitbucket Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('Loop Each Task').item.json }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-more-tasks",
+      "name": "More Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2850, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summary of automation execution\nconst allTasks = $('Get My Assigned Tasks').all();\nconst processedTasks = allTasks.length;\n\n// Count subtasks created (rough estimate)\nconst subtasksPerTask = 4; // average\nconst totalSubtasks = processedTasks * subtasksPerTask;\n\nconst summary = {\n  success: true,\n  message: '✅ Jira Task Automation Completed',\n  stats: {\n    tasksProcessed: processedTasks,\n    subtasksCreated: `~${totalSubtasks}`,\n    branchesCreated: processedTasks,\n    aiUsed: 'Rovo AI (Atlassian Intelligence)'\n  },\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: summary }];"
+        },
+        "options": {}
+      },
+      "id": "summary-output",
+      "name": "Success Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3050, 80]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get My Assigned Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get My Assigned Tasks": {
+      "main": [
+        [
+          {
+            "node": "Filter Parent Tasks Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Parent Tasks Only": {
+      "main": [
+        [
+          {
+            "node": "Loop Each Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Each Task": {
+      "main": [
+        [
+          {
+            "node": "Rovo AI: Break Down Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rovo AI: Break Down Task": {
+      "main": [
+        [
+          {
+            "node": "AI Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Success?": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Subtasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback: Rule-Based Breakdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Subtasks": {
+      "main": [
+        [
+          {
+            "node": "Rovo AI: Estimate Subtask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback: Rule-Based Breakdown": {
+      "main": [
+        [
+          {
+            "node": "Rovo AI: Estimate Subtask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rovo AI: Estimate Subtask": {
+      "main": [
+        [
+          {
+            "node": "Calculate Estimation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Estimation": {
+      "main": [
+        [
+          {
+            "node": "Create Subtask in Jira",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Subtask in Jira": {
+      "main": [
+        [
+          {
+            "node": "Assign Subtask to Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Subtask to Me": {
+      "main": [
+        [
+          {
+            "node": "Extract Feature Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Feature Name": {
+      "main": [
+        [
+          {
+            "node": "Create Bitbucket Branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Bitbucket Branch": {
+      "main": [
+        [
+          {
+            "node": "More Tasks?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More Tasks?": {
+      "main": [
+        [
+          {
+            "node": "Success Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Each Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-05-27T15:31:12.445Z",
+  "versionId": "1"
+}
