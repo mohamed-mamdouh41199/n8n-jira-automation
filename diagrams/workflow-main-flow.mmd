@@ -1,0 +1,34 @@
+---
+title: Jira Task Automation Flow
+---
+flowchart TD
+    Start([Manual Trigger]) --> GetTasks[Get My Assigned Tasks<br/>Jira API]
+    GetTasks --> FilterTasks{Filter Parent<br/>Tasks Only}
+    FilterTasks --> LoopTasks[Loop Each Task]
+    
+    LoopTasks --> Breakdown[Break Down into Subtasks<br/>Rule-Based Logic]
+    
+    Breakdown --> LoopSubtasks[Loop Each Subtask]
+    
+    LoopSubtasks --> Estimate[Calculate Estimation<br/>Based on Complexity]
+    
+    Estimate --> CreateSubtask[Create Subtask in Jira<br/>with Estimation]
+    
+    CreateSubtask --> AssignSubtask[Assign Subtask to Me]
+    
+    AssignSubtask --> MoreSubtasks{More<br/>Subtasks?}
+    MoreSubtasks -->|Yes| LoopSubtasks
+    MoreSubtasks -->|No| ExtractFeature[Extract Feature Name<br/>from Task Summary]
+    
+    ExtractFeature --> CreateBranch[Create Bitbucket Branch<br/>feature/name-TASKKEY]
+    
+    CreateBranch --> MoreTasks{More<br/>Tasks?}
+    MoreTasks -->|Yes| LoopTasks
+    MoreTasks -->|No| End([Automation Complete])
+
+    style Start fill:#e1f5e1
+    style End fill:#e1f5e1
+    style GetTasks fill:#e3f2fd
+    style Breakdown fill:#fff3e0
+    style CreateSubtask fill:#f3e5f5
+    style CreateBranch fill:#fce4ec

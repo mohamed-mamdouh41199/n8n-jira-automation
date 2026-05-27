@@ -1,0 +1,46 @@
+{
+  "name": "Jira Task Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "getAll",
+        "jql": "assignee = currentUser() AND parent is EMPTY AND resolution = Unresolved",
+        "returnAll": true
+      },
+      "id": "jira-get-tasks",
+      "name": "Get My Assigned Tasks",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "1",
+          "name": "Jira Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{"node": "Get My Assigned Tasks", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-05-27T15:31:12.445Z",
+  "versionId": "1"
+}

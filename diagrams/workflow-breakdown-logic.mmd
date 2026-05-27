@@ -1,0 +1,27 @@
+---
+title: Task Breakdown Logic
+---
+flowchart TD
+    Input[Parent Task] --> CheckKeywords{Check Task<br/>Summary}
+    
+    CheckKeywords -->|Contains 'API'<br/>or 'Backend'| APITasks[Backend Subtasks:<br/>- Setup API endpoint<br/>- Business logic<br/>- Validation<br/>- Unit tests]
+    
+    CheckKeywords -->|Contains 'UI'<br/>or 'Frontend'| UITasks[Frontend Subtasks:<br/>- Component structure<br/>- UI layout<br/>- User interactions<br/>- Component tests]
+    
+    CheckKeywords -->|Contains 'Bug'<br/>or 'Fix'| BugTasks[Bug Fix Subtasks:<br/>- Reproduce issue<br/>- Implement fix<br/>- Regression test<br/>- Verify scenarios]
+    
+    CheckKeywords -->|Generic| GenericTasks[Generic Subtasks:<br/>- Analysis & design<br/>- Implementation<br/>- Testing<br/>- Documentation]
+    
+    APITasks --> AssignComplexity[Assign Complexity<br/>low/medium/high]
+    UITasks --> AssignComplexity
+    BugTasks --> AssignComplexity
+    GenericTasks --> AssignComplexity
+    
+    AssignComplexity --> Output[Subtasks with<br/>Complexity Levels]
+
+    style Input fill:#e3f2fd
+    style APITasks fill:#fff3e0
+    style UITasks fill:#e8f5e9
+    style BugTasks fill:#ffebee
+    style GenericTasks fill:#f3e5f5
+    style Output fill:#e1f5e1

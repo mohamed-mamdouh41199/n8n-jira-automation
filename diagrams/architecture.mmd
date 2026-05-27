@@ -1,0 +1,41 @@
+---
+title: System Architecture
+---
+graph TB
+    subgraph User["👤 User"]
+        Trigger[Manual Trigger<br/>Click to Execute]
+    end
+    
+    subgraph N8N["🔧 n8n Workflow Engine"]
+        Workflow[n8n Workflow<br/>Docker Container]
+        DB[(PostgreSQL<br/>Database)]
+        Workflow -.->|Store Data| DB
+    end
+    
+    subgraph APIs["☁️ External APIs"]
+        Jira[Atlassian Jira<br/>REST API]
+        Bitbucket[Bitbucket<br/>REST API]
+        RovoAI[Rovo AI<br/>Future Integration]
+    end
+    
+    subgraph Output["📊 Results"]
+        Subtasks[✅ Jira Subtasks<br/>Created & Assigned]
+        Branch[✅ Git Branch<br/>Created]
+    end
+    
+    Trigger -->|Execute| Workflow
+    
+    Workflow -->|Get Tasks<br/>Create Subtasks<br/>Assign| Jira
+    Workflow -->|Create Branch| Bitbucket
+    Workflow -.->|Future: AI Analysis| RovoAI
+    
+    Jira -->|Tasks Data| Workflow
+    Bitbucket -->|Branch Created| Workflow
+    
+    Workflow -->|Results| Subtasks
+    Workflow -->|Results| Branch
+
+    style User fill:#e1f5e1
+    style N8N fill:#e3f2fd
+    style APIs fill:#fff3e0
+    style Output fill:#c8e6c9
